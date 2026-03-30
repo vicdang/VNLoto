@@ -1,0 +1,35 @@
+{
+    "title": "DC34 Trip 2026",
+    "font": "Calibri",
+    "font_size": 16,
+    "column_width_inches": 0.3,
+    "row_height_inches": 0.3,
+    "header_font_size": 18,
+    "header_text_caps": true,
+    "header_bg_color": "808080",
+    "rounds": 3,
+    "total_tables": 560,
+    "special_cells": 2,
+    "special_cell_char": "★",
+    "special_cell_replace": true,
+    "footer_messages": [
+        "Sing a song",
+        "+1 Beer in Gala",
+        "Tell a joke",
+        "Donate 10% prize",
+        "Hug the MC",
+        "+2 Beers in Gala",
+        "Take a selfie",
+        "Buy 1 more ticket",
+        "Buy 2 more tickets",
+        "Post a review on DC page",
+        "Share your trip moment",
+        "Add 1 ★ to next ticket"
+    ],
+    "footer_font_size": 10,
+    "table_border": {
+        "style": "single",
+        "size": 12,
+        "color": "000000"
+    }
+}

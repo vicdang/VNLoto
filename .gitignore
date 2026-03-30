@@ -48,6 +48,11 @@ coverage.xml
 *.cover
 *.py.cover
 .hypothesis/
+
+# Generated output files (keep config only)
+loto_tables_*.docx
+loto_tables.json
+loto_tables.txt
 .pytest_cache/
 cover/
 

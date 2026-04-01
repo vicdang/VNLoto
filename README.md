@@ -7,15 +7,17 @@ VNLoto is a Python-based generator for authentic Vietnamese Lô Tô (90-ball Bin
 ## Features
 
 - **Authentic Lô Tô Rules**: 3 rows × 9 columns, 5 numbers per row, 15 total numbers per card, strict column range enforcement (1-9, 10-19, ..., 80-90), ascending order per column
-- **Batch Generation**: Generate up to 560+ unique tables with no duplicates
-- **Multiprocessing**: 8 worker processes for fast parallel generation
-- **Round System**: Distribute tables across multiple rounds (default 3 rounds of ~187 tables each)
+- **Batch Generation**: Generate large batches of unique tables with no duplicates (for example 1200 tables)
+- **Multiprocessing**: Uses available CPU cores for fast parallel generation
+- **Round System**: Distribute tables across configurable rounds (for example 6 rounds for 1200 tables)
 - **DOCX Output**: Professional Word document with:
   - Configurable grid layout (4 tables × 2 rows per page)
   - Round and table numbering
   - Exact cell dimensions (0.3" × 0.3")
   - Title row with config text (ALL CAPS, grey background)
-  - Footer row with random motivational messages
+  - Footer row split into 2 cells across 9 columns:
+    - Message cell spans 6 columns and is center-aligned
+    - Table ID cell spans 3 columns and is center-aligned with 6-digit format (`000001` ... `001200`)
   - Thick outer borders on each table, thin interior borders
   - Special cells (★ character) with optional replacement
 - **JSON Export**: Machine-readable format for data processing
@@ -35,7 +37,7 @@ pip install python-docx
 
 ## Usage
 
-### Generate with defaults (560 tables, 3 rounds, 8 tables per page)
+### Generate with defaults from `config.json` (for example 1200 tables, 6 rounds, 8 tables per page)
 
 ```bash
 python loto_generator.py
@@ -71,7 +73,7 @@ Edit `config.json` to customize output. See config.json for all available option
 
 ## Output Files
 
-- `loto_tables_YYYYMMDD_HHMMSS.docx` - Word document with formatted tables (70 pages for 560 tables)
+- `loto_tables_YYYYMMDD_HHMMSS.docx` - Word document with formatted tables
 - `loto_tables.json` - JSON array of all generated tables
 - `loto_tables.txt` - Text representation of all tables
 

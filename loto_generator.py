@@ -378,9 +378,10 @@ def save_docx(all_tables, path, config, tables_per_page=8):
                 c = random.choice(filled_by_row[r])
                 special_positions.add((r, c))
 
-        # Pick a random footer message for this table (prepend special char)
+        # Footer is split into message (6 columns) and table id (3 columns).
         msg = random.choice(footer_messages)
         table_footer_text = f"{special_char} {msg}"
+        table_id_text = f"{table_num:06d}"
 
         # Create table with only 9 data rows; title & footer added via raw XML
         tbl = doc.add_table(rows=9, cols=9)
@@ -597,11 +598,41 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '  <w:tc>'
             '    <w:tcPr>'
             '      <w:tcW w:w="%d" w:type="dxa"/>'
-            '      <w:gridSpan w:val="9"/>'
+            '      <w:gridSpan w:val="6"/>'
             '      <w:vAlign w:val="center"/>'
             '      <w:tcBorders>'
             '        <w:top w:val="single" w:sz="%s" w:space="0" w:color="000000"/>'
             '        <w:left w:val="%s" w:sz="%s" w:space="0" w:color="%s"/>'
+            '        <w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
+            '        <w:bottom w:val="%s" w:sz="%s" w:space="0" w:color="%s"/>'
+            '      </w:tcBorders>'
+            '    </w:tcPr>'
+            '    <w:p>'
+            '      <w:pPr>'
+            '        <w:jc w:val="center"/>'
+            '        <w:spacing w:before="0" w:after="0" w:line="%d" w:lineRule="exact"/>'
+            '      </w:pPr>'
+            '      <w:r>'
+            '        <w:rPr>'
+            '          <w:rFonts w:ascii="%s" w:hAnsi="%s" w:cs="%s"/>'
+            '          <w:i/>'
+            '          <w:iCs/>'
+            '          <w:sz w:val="%d"/>'
+            '          <w:szCs w:val="%d"/>'
+            '          <w:color w:val="000000"/>'
+            '        </w:rPr>'
+            '        <w:t xml:space="preserve">%s</w:t>'
+            '      </w:r>'
+            '    </w:p>'
+            '  </w:tc>'
+            '  <w:tc>'
+            '    <w:tcPr>'
+            '      <w:tcW w:w="%d" w:type="dxa"/>'
+            '      <w:gridSpan w:val="3"/>'
+            '      <w:vAlign w:val="center"/>'
+            '      <w:tcBorders>'
+            '        <w:top w:val="single" w:sz="%s" w:space="0" w:color="000000"/>'
+            '        <w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/>'
             '        <w:right w:val="%s" w:sz="%s" w:space="0" w:color="%s"/>'
             '        <w:bottom w:val="%s" w:sz="%s" w:space="0" w:color="%s"/>'
             '      </w:tcBorders>'
@@ -627,9 +658,8 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '</w:tr>' % (
                 nsdecls('w'),
                 footer_ht_twips,
-                tbl_width_twips,
+                col_width_twips * 6,
                 THIN,
-                border_style, border_size, border_color,
                 border_style, border_size, border_color,
                 border_style, border_size, border_color,
                 footer_ht_twips,
@@ -637,6 +667,15 @@ def save_docx(all_tables, path, config, tables_per_page=8):
                 footer_font_sz_hps,
                 footer_font_sz_hps,
                 table_footer_text,
+                col_width_twips * 3,
+                THIN,
+                border_style, border_size, border_color,
+                border_style, border_size, border_color,
+                footer_ht_twips,
+                font_name, font_name, font_name,
+                footer_font_sz_hps,
+                footer_font_sz_hps,
+                table_id_text,
             )
         )
         tbl._tbl.append(footer_tr)

@@ -7,9 +7,9 @@
     "header_font_size": 18,
     "header_text_caps": true,
     "header_bg_color": "808080",
-    "rounds": 3,
-    "total_tables": 560,
-    "special_cells": 2,
+    "rounds": 6,
+    "total_tables": 1200,
+    "special_cells": 3,
     "special_cell_char": "★",
     "special_cell_replace": true,
     "footer_messages": [

@@ -19,17 +19,23 @@ COLUMN_RANGES = []
 
 def init_column_ranges(num_cols):
     """Generate column ranges for Lô Tô based on number of columns.
-    9 columns: 1-10, 10-20, ..., 80-90
-    8 columns: 1-10-1, 10-20, ..., 70-81 (adjusted for 80 numbers)
+    Distributes 90 numbers (1-90) evenly across num_cols columns.
+    For example: 9 cols → [1-10, 11-20, ..., 81-90]
+                 7 cols → [1-13, 14-26, 27-39, 40-52, 53-65, 66-78, 79-90]
     """
     global NUM_COLUMNS, COLUMN_RANGES
     NUM_COLUMNS = num_cols
     COLUMN_RANGES = []
     numbers_per_col = 90 // num_cols
+    remainder = 90 % num_cols
+    
+    start = 1
     for i in range(num_cols):
-        start = i * numbers_per_col + 1
-        end = (i + 1) * numbers_per_col + 1
+        # Distribute remainder to last columns
+        col_size = numbers_per_col + (1 if i >= num_cols - remainder else 0)
+        end = start + col_size
         COLUMN_RANGES.append(list(range(start, end)))
+        start = end
 
 # Default initialization for 9 columns
 init_column_ranges(9)
@@ -203,8 +209,11 @@ def table_fingerprint(table):
     )
 
 
-def worker_batch(batch_size):
+def worker_batch(batch_size, num_cols=9):
     """Worker function: generate a batch of unique tables."""
+    # Initialize column ranges in this process
+    init_column_ranges(num_cols)
+    
     tables = []
     seen = set()
     for _ in range(batch_size):
@@ -393,7 +402,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
         table_id_text = f"{table_num:03d}"
 
         # Create table with only 9 data rows; title & footer added via raw XML
-        tbl = doc.add_table(rows=9, cols=9)
+        tbl = doc.add_table(rows=9, cols=NUM_COLUMNS)
         tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
         # Detach from document body — will be inserted into an outer cell
         doc.element.body.remove(tbl._tbl)
@@ -500,7 +509,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '<w:tc>'
             '<w:tcPr>'
             '<w:tcW w:w="%d" w:type="dxa"/>'
-            '<w:gridSpan w:val="9"/>'
+            '<w:gridSpan w:val="%d"/>'
             '<w:vAlign w:val="center"/>'
             '<w:tcBorders>'
             '<w:top w:val="%s" w:sz="%s" w:space="0" w:color="%s"/>'
@@ -529,6 +538,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
                 nsdecls('w'),
                 title_row_twips,
                 tbl_width_twips,
+                NUM_COLUMNS,
                 border_style, border_size, border_color,
                 border_style, border_size, border_color,
                 border_style, border_size, border_color,
@@ -599,6 +609,8 @@ def save_docx(all_tables, path, config, tables_per_page=8):
         # --- Footer row (appended via raw XML with gridSpan) ---
         footer_ht_twips = int(row_ht.inches * 1440)
         footer_font_sz_hps = int(footer_font_size.pt * 2)  # half-points
+        footer_msg_cols = NUM_COLUMNS - 2  # Message spans all but last 2 columns
+        footer_id_cols = 2  # ID always spans 2 columns
         footer_tr = parse_xml(
             '<w:tr %s>'
             '  <w:trPr>'
@@ -607,7 +619,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '  <w:tc>'
             '    <w:tcPr>'
             '      <w:tcW w:w="%d" w:type="dxa"/>'
-            '      <w:gridSpan w:val="7"/>'
+            '      <w:gridSpan w:val="%d"/>'
             '      <w:vAlign w:val="center"/>'
             '      <w:tcBorders>'
             '        <w:top w:val="single" w:sz="%s" w:space="0" w:color="000000"/>'
@@ -637,7 +649,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '  <w:tc>'
             '    <w:tcPr>'
             '      <w:tcW w:w="%d" w:type="dxa"/>'
-            '      <w:gridSpan w:val="2"/>'
+            '      <w:gridSpan w:val="%d"/>'
             '      <w:vAlign w:val="center"/>'
             '      <w:tcBorders>'
             '        <w:top w:val="single" w:sz="%s" w:space="0" w:color="000000"/>'
@@ -667,7 +679,8 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '</w:tr>' % (
                 nsdecls('w'),
                 footer_ht_twips,
-                col_width_twips * 7,
+                col_width_twips * footer_msg_cols,
+                footer_msg_cols,
                 THIN,
                 border_style, border_size, border_color,
                 border_style, border_size, border_color,
@@ -676,7 +689,8 @@ def save_docx(all_tables, path, config, tables_per_page=8):
                 footer_font_sz_hps,
                 footer_font_sz_hps,
                 table_footer_text,
-                col_width_twips * 2,
+                col_width_twips * footer_id_cols,
+                footer_id_cols,
                 THIN,
                 border_style, border_size, border_color,
                 border_style, border_size, border_color,
@@ -800,6 +814,7 @@ def main(num_tables, tables_per_page=8, config_path=None):
     # Initialize column ranges from config
     num_cols = config.get("columns", 9)
     init_column_ranges(num_cols)
+    print(f"Columns per ticket: {NUM_COLUMNS}")
 
     # Use total_tables from config if -n not explicitly provided
     if num_tables is None:
@@ -825,7 +840,7 @@ def main(num_tables, tables_per_page=8, config_path=None):
                 batches.append(b)
                 remaining -= b
 
-        futures = {executor.submit(worker_batch, b): b for b in batches}
+        futures = {executor.submit(worker_batch, b, num_cols): b for b in batches}
 
         for future in as_completed(futures):
             tables = future.result()

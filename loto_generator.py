@@ -387,10 +387,10 @@ def save_docx(all_tables, path, config, tables_per_page=8):
                 c = random.choice(filled_by_row[r])
                 special_positions.add((r, c))
 
-        # Footer is split into message (6 columns) and table id (3 columns).
+        # Footer is split into message (7 columns) and table id (2 columns).
         msg = random.choice(footer_messages)
         table_footer_text = f"{special_char} {msg}"
-        table_id_text = f"{table_num:06d}"
+        table_id_text = f"{table_num:03d}"
 
         # Create table with only 9 data rows; title & footer added via raw XML
         tbl = doc.add_table(rows=9, cols=9)
@@ -607,7 +607,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '  <w:tc>'
             '    <w:tcPr>'
             '      <w:tcW w:w="%d" w:type="dxa"/>'
-            '      <w:gridSpan w:val="6"/>'
+            '      <w:gridSpan w:val="7"/>'
             '      <w:vAlign w:val="center"/>'
             '      <w:tcBorders>'
             '        <w:top w:val="single" w:sz="%s" w:space="0" w:color="000000"/>'
@@ -637,7 +637,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '  <w:tc>'
             '    <w:tcPr>'
             '      <w:tcW w:w="%d" w:type="dxa"/>'
-            '      <w:gridSpan w:val="3"/>'
+            '      <w:gridSpan w:val="2"/>'
             '      <w:vAlign w:val="center"/>'
             '      <w:tcBorders>'
             '        <w:top w:val="single" w:sz="%s" w:space="0" w:color="000000"/>'
@@ -667,7 +667,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '</w:tr>' % (
                 nsdecls('w'),
                 footer_ht_twips,
-                col_width_twips * 6,
+                col_width_twips * 7,
                 THIN,
                 border_style, border_size, border_color,
                 border_style, border_size, border_color,
@@ -676,7 +676,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
                 footer_font_sz_hps,
                 footer_font_sz_hps,
                 table_footer_text,
-                col_width_twips * 3,
+                col_width_twips * 2,
                 THIN,
                 border_style, border_size, border_color,
                 border_style, border_size, border_color,

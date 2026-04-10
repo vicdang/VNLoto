@@ -13,17 +13,26 @@ from docx.enum.section import WD_ORIENT
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
 
-COLUMN_RANGES = [
-    list(range(1, 10)),    # Col 0: 1-9
-    list(range(10, 20)),   # Col 1: 10-19
-    list(range(20, 30)),   # Col 2: 20-29
-    list(range(30, 40)),   # Col 3: 30-39
-    list(range(40, 50)),   # Col 4: 40-49
-    list(range(50, 60)),   # Col 5: 50-59
-    list(range(60, 70)),   # Col 6: 60-69
-    list(range(70, 80)),   # Col 7: 70-79
-    list(range(80, 91)),   # Col 8: 80-90
-]
+# Global configuration - will be set from config.json
+NUM_COLUMNS = 9
+COLUMN_RANGES = []
+
+def init_column_ranges(num_cols):
+    """Generate column ranges for Lô Tô based on number of columns.
+    9 columns: 1-10, 10-20, ..., 80-90
+    8 columns: 1-10-1, 10-20, ..., 70-81 (adjusted for 80 numbers)
+    """
+    global NUM_COLUMNS, COLUMN_RANGES
+    NUM_COLUMNS = num_cols
+    COLUMN_RANGES = []
+    numbers_per_col = 90 // num_cols
+    for i in range(num_cols):
+        start = i * numbers_per_col + 1
+        end = (i + 1) * numbers_per_col + 1
+        COLUMN_RANGES.append(list(range(start, end)))
+
+# Default initialization for 9 columns
+init_column_ranges(9)
 
 CARDS_PER_TABLE = 3
 NUM_WORKERS = os.cpu_count() or 4
@@ -36,7 +45,7 @@ def generate_card(used_numbers=None):
     while True:
         # Step 1: Decide how many numbers per column (1, 2, or 3), total must be 15
         while True:
-            col_counts = [random.randint(1, 3) for _ in range(9)]
+            col_counts = [random.randint(1, 3) for _ in range(NUM_COLUMNS)]
             if sum(col_counts) == 15:
                 break
 
@@ -44,7 +53,7 @@ def generate_card(used_numbers=None):
         col_numbers = []
         card_nums = set()
         valid = True
-        for c in range(9):
+        for c in range(NUM_COLUMNS):
             available = [n for n in COLUMN_RANGES[c] if n not in used_numbers]
             if len(available) < col_counts[c]:
                 available = [n for n in COLUMN_RANGES[c] if n not in card_nums]
@@ -60,13 +69,13 @@ def generate_card(used_numbers=None):
 
         # Step 3: Distribute numbers into 3 rows, each row must have exactly 5 numbers
         # Build a placement: for each column, decide which rows get numbers
-        grid = [[None] * 9 for _ in range(3)]
+        grid = [[None] * NUM_COLUMNS for _ in range(3)]
 
         # For each column, pick which rows get the numbers
         row_fills = [0, 0, 0]  # track how many numbers each row has
         col_row_assignments = []
 
-        for c in range(9):
+        for c in range(NUM_COLUMNS):
             count = col_counts[c]
             if count == 3:
                 rows = [0, 1, 2]
@@ -90,9 +99,9 @@ def generate_card(used_numbers=None):
                 ok = True
                 
                 # Shuffle column order for variety
-                order = list(range(9))
+                order = list(range(NUM_COLUMNS))
                 random.shuffle(order)
-                temp_assignments = [None] * 9
+                temp_assignments = [None] * NUM_COLUMNS
                 
                 for c in order:
                     count = col_counts[c]
@@ -130,7 +139,7 @@ def generate_card(used_numbers=None):
                 continue
 
         # Place numbers in grid
-        for c in range(9):
+        for c in range(NUM_COLUMNS):
             nums = col_numbers[c]
             rows = col_row_assignments[c]
             for i, r in enumerate(rows):
@@ -162,14 +171,14 @@ def validate_card(grid):
 
     # Rule: numbers in correct column ranges
     for r in range(3):
-        for c in range(9):
+        for c in range(NUM_COLUMNS):
             v = grid[r][c]
             if v is not None:
                 if v not in COLUMN_RANGES[c]:
                     return False
 
     # Rule: columns sorted ascending top to bottom
-    for c in range(9):
+    for c in range(NUM_COLUMNS):
         col_vals = [grid[r][c] for r in range(3) if grid[r][c] is not None]
         if col_vals != sorted(col_vals):
             return False
@@ -210,8 +219,8 @@ def worker_batch(batch_size):
 
 
 def print_combined_visual(table, table_id, file=None):
-    border = "+" + "----+" * 9
-    thick  = "+" + "====+" * 9
+    border = "+" + "----+" * NUM_COLUMNS
+    thick  = "+" + "====+" * NUM_COLUMNS
     out = file or __import__("sys").stdout
     out.write(f"--- Table {table_id:03d} ---\n")
     out.write(thick + "\n")
@@ -329,7 +338,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
         is_top    = r_idx == 0
         is_bottom = False  # footer row handles the outer bottom border
         is_left   = c_idx == 0
-        is_right  = c_idx == 8
+        is_right  = c_idx == NUM_COLUMNS - 1
 
         top_style    = border_style if is_top    else "single"
         top_sz       = border_size  if is_top    else THIN
@@ -370,7 +379,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             # Collect all filled positions grouped by row
             filled_by_row = {}
             for r in range(9):
-                filled_by_row[r] = [c for c in range(9) if table_data[r][c] is not None]
+                filled_by_row[r] = [c for c in range(NUM_COLUMNS) if table_data[r][c] is not None]
             # Pick up to special_count rows (without replacement), then 1 cell per row
             available_rows = [r for r in range(9) if filled_by_row[r]]
             chosen_rows = random.sample(available_rows, min(special_count, len(available_rows)))
@@ -389,10 +398,10 @@ def save_docx(all_tables, path, config, tables_per_page=8):
         # Detach from document body — will be inserted into an outer cell
         doc.element.body.remove(tbl._tbl)
 
-        # Table width: exact (9 columns × col_width)
+        # Table width: exact (columns × col_width)
         tbl_pr = tbl._tbl.tblPr
         col_width_twips = int(col_width.inches * 1440)
-        tbl_width_twips = col_width_twips * 9
+        tbl_width_twips = col_width_twips * NUM_COLUMNS
         tbl_pr.append(parse_xml(
             f'<w:tblW {nsdecls("w")} w:w="{tbl_width_twips}" w:type="dxa"/>'
         ))
@@ -417,7 +426,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
         else:
             for child in list(tbl_grid):
                 tbl_grid.remove(child)
-        for _ in range(9):
+        for _ in range(NUM_COLUMNS):
             tbl_grid.append(parse_xml(
                 f'<w:gridCol {nsdecls("w")} w:w="{col_width_twips}"/>'
             ))
@@ -546,7 +555,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             ))
             is_card_boundary = (r_idx + 1) % 3 == 0
 
-            for c_idx in range(9):
+            for c_idx in range(NUM_COLUMNS):
                 cell = row.cells[c_idx]
                 cell.width = col_width
                 # Force exact cell width
@@ -787,6 +796,10 @@ def main(num_tables, tables_per_page=8, config_path=None):
     else:
         config = {"title": "LÔ TÔ"}
         print(f"Config not found at {config_path}, using defaults.")
+
+    # Initialize column ranges from config
+    num_cols = config.get("columns", 9)
+    init_column_ranges(num_cols)
 
     # Use total_tables from config if -n not explicitly provided
     if num_tables is None:

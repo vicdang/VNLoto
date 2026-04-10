@@ -7,6 +7,7 @@
     "header_font_size": 18,
     "header_text_caps": true,
     "header_bg_color": "808080",
+    "columns": 9,
     "rounds": 6,
     "total_tables": 1200,
     "special_cells": 3,

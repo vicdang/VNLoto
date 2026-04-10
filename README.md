@@ -6,7 +6,7 @@ VNLoto is a Python-based generator for authentic Vietnamese Lô Tô (90-ball Bin
 
 ## Features
 
-- **Authentic Lô Tô Rules**: 3 rows × 9 columns, 5 numbers per row, 15 total numbers per card, strict column range enforcement (1-9, 10-19, ..., 80-90), ascending order per column
+- **Authentic Lô Tô Rules**: Configurable columns (default 9), 3 rows per card, exactly 5 numbers per row, 15 total numbers per card, strict column range enforcement, ascending order per column
 - **Batch Generation**: Generate large batches of unique tables with no duplicates (for example 1200 tables)
 - **Multiprocessing**: Uses available CPU cores for fast parallel generation
 - **Round System**: Distribute tables across configurable rounds (for example 6 rounds for 1200 tables)
@@ -79,10 +79,25 @@ Edit `config.json` to customize output. See config.json for all available option
 
 ## Validation
 
-All generated tables pass strict Lô Tô rules validation:
-- Exactly 3 rows, 9 columns per card
+All generated tables pass strict Lô Tô rules validation (default 9 columns):
+- Exactly 3 rows, configurable columns per card (default 9)
 - Exactly 5 numbers per row
 - Exactly 15 unique numbers per card
-- Numbers strictly in column ranges (1-9, 10-19, ..., 80-90)
+- Numbers strictly in column ranges
 - Numbers ascending within each column
 - No duplicate tables across all generations
+
+## Configuration Reference
+
+Key configuration options in `config.json`:
+- `columns`: Number of columns per ticket (default: 9)
+- `rounds`: Number of rounds to divide tables into (default: 6)
+- `total_tables`: Total number of unique tables to generate (default: 1200)
+- `title`: Document title (default: "DC34 Trip 2026")
+- `font`: Font name for table content (default: "Calibri")
+- `header_font_size`: Title row font size (default: 18)
+- `special_cells`: Max special cells per row (default: 3)
+- `footer_messages`: Array of random messages for table footers
+- `table_border`: Border style/size/color for outer table edges
+
+See `config.json` for complete documentation of all parameters.

@@ -1,6 +1,7 @@
 import random
 import json
 import os
+import sys
 import time
 import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -17,25 +18,37 @@ from docx.oxml import parse_xml
 NUM_COLUMNS = 9
 COLUMN_RANGES = []
 
-def init_column_ranges(num_cols):
-    """Generate column ranges for Lô Tô based on number of columns.
-    Distributes 90 numbers (1-90) evenly across num_cols columns.
-    For example: 9 cols → [1-10, 11-20, ..., 81-90]
-                 7 cols → [1-13, 14-26, 27-39, 40-52, 53-65, 66-78, 79-90]
+def init_column_ranges(num_cols=9):
+    """Generate column ranges for Vietnamese Lô Tô.
+    Strictly follows the standard column ranges:
+    Col 1: 1-9, Col 2: 10-19, Col 3: 20-29, Col 4: 30-39, Col 5: 40-49, 
+    Col 6: 50-59, Col 7: 60-69, Col 8: 70-79, Col 9: 80-89
+    
+    For 9 columns: uses all ranges, totaling 1-89
+    For 7 columns: uses only first 7 ranges, totaling 1-69
     """
     global NUM_COLUMNS, COLUMN_RANGES
     NUM_COLUMNS = num_cols
-    COLUMN_RANGES = []
-    numbers_per_col = 90 // num_cols
-    remainder = 90 % num_cols
     
-    start = 1
-    for i in range(num_cols):
-        # Distribute remainder to last columns
-        col_size = numbers_per_col + (1 if i >= num_cols - remainder else 0)
-        end = start + col_size
-        COLUMN_RANGES.append(list(range(start, end)))
-        start = end
+    # Standard ranges for Vietnamese Lô Tô
+    standard_ranges = [
+        list(range(1, 10)),    # Col 1: 1-9
+        list(range(10, 20)),   # Col 2: 10-19
+        list(range(20, 30)),   # Col 3: 20-29
+        list(range(30, 40)),   # Col 4: 30-39
+        list(range(40, 50)),   # Col 5: 40-49
+        list(range(50, 60)),   # Col 6: 50-59
+        list(range(60, 70)),   # Col 7: 60-69
+        list(range(70, 80)),   # Col 8: 70-79
+        list(range(80, 90)),   # Col 9: 80-89
+    ]
+    
+    if num_cols == 9:
+        COLUMN_RANGES = standard_ranges
+    elif num_cols == 7:
+        COLUMN_RANGES = standard_ranges[:7]
+    else:
+        raise ValueError(f"Unsupported number of columns: {num_cols}. Only 7 and 9 are supported.")
 
 # Default initialization for 9 columns
 init_column_ranges(9)
@@ -44,15 +57,24 @@ CARDS_PER_TABLE = 3
 NUM_WORKERS = os.cpu_count() or 4
 
 
-def generate_card(used_numbers=None):
+def generate_card(used_numbers=None, winning_cells=None):
+    """Generate a bingo card with number of cells based on winning_cells.
+    For winning_cells=4: 4 numbers per row (12 total)
+    For winning_cells=5: 5 numbers per row (15 total)
+    """
     if used_numbers is None:
         used_numbers = set()
+    if winning_cells is None:
+        winning_cells = 5  # Default to 5 for backward compatibility
+    
+    cells_per_row = winning_cells
+    total_cells = cells_per_row * 3  # 3 rows
 
     while True:
-        # Step 1: Decide how many numbers per column (1, 2, or 3), total must be 15
+        # Step 1: Decide how many numbers per column (1, 2, or 3), total must equal total_cells
         while True:
             col_counts = [random.randint(1, 3) for _ in range(NUM_COLUMNS)]
-            if sum(col_counts) == 15:
+            if sum(col_counts) == total_cells:
                 break
 
         # Step 2: Pick numbers for each column, avoiding used_numbers as much as possible
@@ -93,55 +115,53 @@ def generate_card(used_numbers=None):
             for r in rows:
                 row_fills[r] += 1
 
-        # Check if each row has exactly 5 — if not, retry
-        if row_fills != [5, 5, 5]:
-            # Try to fix by swapping assignments
-            # Use a backtracking approach with limited attempts
-            fixed = False
-            for attempt in range(200):
-                # Reset
-                test_assignments = []
-                test_fills = [0, 0, 0]
-                ok = True
+        # Expected number of filled cells per row
+        expected_fills = [cells_per_row, cells_per_row, cells_per_row]
+        
+        # Check if each row has exactly cells_per_row — if not, retry with greedy balancing
+        if row_fills != expected_fills:
+            # Use a greedy algorithm: for each column, assign its numbers to rows that need them most
+            # Build a mapping: assign cells to rows to reach the target
+            col_row_assignments = []
+            test_fills = [0, 0, 0]
+            valid_assignment = True
+            
+            for c in range(NUM_COLUMNS):
+                count = col_counts[c]
+                remaining_cols = NUM_COLUMNS - c - 1
                 
-                # Shuffle column order for variety
-                order = list(range(NUM_COLUMNS))
-                random.shuffle(order)
-                temp_assignments = [None] * NUM_COLUMNS
-                
-                for c in order:
-                    count = col_counts[c]
-                    if count == 3:
-                        rows = [0, 1, 2]
-                    elif count == 2:
-                        # Pick 2 rows that have the most remaining capacity
-                        remaining = [(5 - test_fills[r], r) for r in range(3)]
-                        remaining.sort(reverse=True)
-                        candidates = [r for cap, r in remaining if cap > 0]
-                        if len(candidates) < 2:
-                            ok = False
-                            break
-                        # Weighted random: prefer rows with more capacity
-                        rows = sorted(random.sample(candidates, 2))
+                if count == 3:
+                    # All rows get a number
+                    col_row_assignments.append([0, 1, 2])
+                    for r in [0, 1, 2]:
+                        test_fills[r] += 1
+                elif count == 2:
+                    # Pick 2 rows with most remaining capacity (greedy)
+                    remaining_needed = [(cells_per_row - test_fills[r], r) for r in range(3)]
+                    remaining_needed.sort(reverse=True)
+                    candidates = [r for cap, r in remaining_needed if cap > 0]
+                    if len(candidates) >= 2:
+                        rows = sorted([candidates[0], candidates[1]])
                     else:
-                        remaining = [(5 - test_fills[r], r) for r in range(3)]
-                        remaining.sort(reverse=True)
-                        candidates = [r for cap, r in remaining if cap > 0]
-                        if len(candidates) < 1:
-                            ok = False
-                            break
-                        rows = [random.choice(candidates)]
-                    
-                    temp_assignments[c] = rows
+                        valid_assignment = False
+                        break
+                    col_row_assignments.append(rows)
                     for r in rows:
                         test_fills[r] += 1
-
-                if ok and test_fills == [5, 5, 5]:
-                    col_row_assignments = temp_assignments
-                    fixed = True
-                    break
-
-            if not fixed:
+                else:  # count == 1
+                    # Pick the 1 row that needs it most
+                    remaining_needed = [(cells_per_row - test_fills[r], r) for r in range(3)]
+                    remaining_needed.sort(reverse=True)
+                    candidates = [r for cap, r in remaining_needed if cap > 0]
+                    if len(candidates) >= 1:
+                        row = candidates[0]
+                    else:
+                        valid_assignment = False
+                        break
+                    col_row_assignments.append([row])
+                    test_fills[row] += 1
+            
+            if not valid_assignment or test_fills != expected_fills:
                 continue
 
         # Place numbers in grid
@@ -152,27 +172,32 @@ def generate_card(used_numbers=None):
                 grid[r][c] = nums[i]
 
         # Validate
-        if not validate_card(grid):
+        if not validate_card(grid, winning_cells=winning_cells):
             continue
 
         used_numbers.update(card_nums)
         return grid
 
 
-def validate_card(grid):
-    # Rule: each row has exactly 5 numbers
+def validate_card(grid, winning_cells=None):
+    # Rule: each row has exactly winning_cells numbers
+    if winning_cells is None:
+        winning_cells = 5
+    expected_per_row = winning_cells
+    expected_total = winning_cells * 3
+    
     for r in range(3):
         count = sum(1 for v in grid[r] if v is not None)
-        if count != 5:
+        if count != expected_per_row:
             return False
 
-    # Rule: total 15 numbers
+    # Rule: total correct number of cells
     all_nums = [v for row in grid for v in row if v is not None]
-    if len(all_nums) != 15:
+    if len(all_nums) != expected_total:
         return False
 
     # Rule: no duplicates
-    if len(set(all_nums)) != 15:
+    if len(set(all_nums)) != expected_total:
         return False
 
     # Rule: numbers in correct column ranges
@@ -192,12 +217,14 @@ def validate_card(grid):
     return True
 
 
-def generate_table(_=None):
+def generate_table(_=None, winning_cells=None):
     """Generate one table (3 cards, 9 rows). Returns the 9-row grid."""
+    if winning_cells is None:
+        winning_cells = 5
     used = set()
     rows = []
     for _ in range(CARDS_PER_TABLE):
-        grid = generate_card(used)
+        grid = generate_card(used, winning_cells=winning_cells)
         rows.extend(grid)
     return rows
 
@@ -209,16 +236,18 @@ def table_fingerprint(table):
     )
 
 
-def worker_batch(batch_size, num_cols=9):
+def worker_batch(batch_size, num_cols=9, winning_cells=None):
     """Worker function: generate a batch of unique tables."""
     # Initialize column ranges in this process
     init_column_ranges(num_cols)
+    if winning_cells is None:
+        winning_cells = 5
     
     tables = []
     seen = set()
     for _ in range(batch_size):
         while True:
-            t = generate_table()
+            t = generate_table(winning_cells=winning_cells)
             fp = table_fingerprint(t)
             if fp not in seen:
                 seen.add(fp)
@@ -248,17 +277,28 @@ def print_combined_visual(table, table_id, file=None):
             out.write(border + "\n")
 
 
-def validate_table(table):
+def validate_table(table, winning_cells=None):
     """Validate all 3 cards in a 9-row table."""
+    if winning_cells is None:
+        winning_cells = 5
     for card_idx in range(CARDS_PER_TABLE):
         card = table[card_idx * 3 : card_idx * 3 + 3]
-        if not validate_card(card):
+        if not validate_card(card, winning_cells=winning_cells):
             return False
     return True
 
 
-def save_docx(all_tables, path, config, tables_per_page=8):
-    """Save tables to DOCX with 2 tables per row, laid out in a grid."""
+def save_docx(all_tables, path, config, tables_per_page=8, round_num=None):
+    """Save tables to DOCX with 2 tables per row, laid out in a grid.
+    
+    Args:
+        all_tables: List of 9x7/9x9 grids
+        path: Output DOCX file path
+        config: Configuration dict
+        tables_per_page: Tables per page in layout
+        round_num: Specific round number to use for all tables in this file (for split files)
+                   If None, calculates round based on table position
+    """
     doc = Document()
     title_text = config.get("title", "LÔ TÔ")
     font_name = config.get("font", "Calibri")
@@ -285,7 +325,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
     border_size = str(border_cfg.get("size", 12))
     border_color = border_cfg.get("color", "000000")
 
-    COLS_PER_ROW = 4
+    COLS_PER_ROW = config.get("page_layout", {}).get("tickets_per_row", 4)
     rows_per_page = (tables_per_page + COLS_PER_ROW - 1) // COLS_PER_ROW
 
     # --- Page setup: Landscape A4 ---
@@ -452,7 +492,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
             '<w:tc>'
             '<w:tcPr>'
             '<w:tcW w:w="%d" w:type="dxa"/>'
-            '<w:gridSpan w:val="9"/>'
+            '<w:gridSpan w:val="%d"/>'
             '<w:vAlign w:val="center"/>'
             '<w:shd w:fill="%s" w:val="clear" w:color="auto"/>'
             '<w:tcBorders>'
@@ -482,6 +522,7 @@ def save_docx(all_tables, path, config, tables_per_page=8):
                 nsdecls('w'),
                 title_row_twips,
                 tbl_width_twips,
+                NUM_COLUMNS,
                 header_bg,
                 border_style, border_size, border_color,
                 border_style, border_size, border_color,
@@ -705,6 +746,26 @@ def save_docx(all_tables, path, config, tables_per_page=8):
 
         return tbl._tbl
 
+    # --- Add title and winning information ---
+    title_para = doc.add_paragraph()
+    title_run = title_para.add_run(title_text)
+    title_run.font.size = Pt(24)
+    title_run.font.bold = True
+    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    # Add winning condition info
+    num_cols = config.get("columns", 9)
+    winning_cells = config.get("winning_cells", 5 if num_cols == 9 else 4)
+    info_para = doc.add_paragraph()
+    info_run = info_para.add_run(
+        f"To Win: Mark {winning_cells} cells in a ROW (horizontally, vertically, or diagonally)"
+    )
+    info_run.font.size = Pt(12)
+    info_run.font.italic = True
+    info_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    
+    doc.add_paragraph()  # Spacing
+
     # --- Build document page by page ---
     for page_start in range(0, len(all_tables), tables_per_page):
         page_tables = all_tables[page_start:page_start + tables_per_page]
@@ -756,10 +817,15 @@ def save_docx(all_tables, path, config, tables_per_page=8):
                 cell._tc.remove(child_p)
 
             # Build and insert nested loto table
-            round_num = ((table_num - 1) // tables_per_round) + 1
-            if round_num > num_rounds:
-                round_num = num_rounds
-            inner_elem = build_loto_table(table_data, table_num, round_num)
+            if round_num is not None:
+                # Use the explicit round_num passed to save_docx (for split files)
+                calc_round_num = round_num
+            else:
+                # Calculate round based on table position (for full file generation)
+                calc_round_num = ((table_num - 1) // tables_per_round) + 1
+                if calc_round_num > num_rounds:
+                    calc_round_num = num_rounds
+            inner_elem = build_loto_table(table_data, table_num, calc_round_num)
             cell._tc.append(inner_elem)
             # Word requires at least one <w:p> in each cell; add a zero-height trailing one
             cell._tc.append(parse_xml(
@@ -799,7 +865,52 @@ def save_docx(all_tables, path, config, tables_per_page=8):
     doc.save(path)
 
 
-def main(num_tables, tables_per_page=8, config_path=None):
+def convert_docx_to_pdf(docx_path):
+    """Convert DOCX file to PDF using LibreOffice in headless mode.
+    
+    Args:
+        docx_path: Path to the DOCX file
+        
+    Returns:
+        Path to generated PDF or None if conversion failed
+    """
+    import subprocess
+    
+    pdf_path = docx_path.replace('.docx', '.pdf')
+    
+    try:
+        # Try LibreOffice (works on Windows, Mac, Linux)
+        result = subprocess.run(
+            ['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir',
+             os.path.dirname(docx_path), docx_path],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        if result.returncode == 0 and os.path.exists(pdf_path):
+            return pdf_path
+    except FileNotFoundError:
+        # LibreOffice not found, try alternative: soffice (common alias)
+        try:
+            result = subprocess.run(
+                ['soffice', '--headless', '--convert-to', 'pdf', '--outdir',
+                 os.path.dirname(docx_path), docx_path],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            if result.returncode == 0 and os.path.exists(pdf_path):
+                return pdf_path
+        except FileNotFoundError:
+            print(f"Warning: LibreOffice not found. Cannot convert DOCX to PDF.")
+            print("  Please install LibreOffice or Python pdf library (pip install reportlab docx2pdf)")
+            return None
+    
+    print(f"Error converting DOCX to PDF: {docx_path}")
+    return None
+
+
+def main(num_tables, tables_per_page=None, config_path=None, split_by_rounds=None, generate_preview=None, export_format=None):
     # --- Load config ---
     if config_path is None:
         config_path = os.path.join(os.path.dirname(__file__), "config.json")
@@ -819,6 +930,32 @@ def main(num_tables, tables_per_page=8, config_path=None):
     # Use total_tables from config if -n not explicitly provided
     if num_tables is None:
         num_tables = config.get("total_tables", 500)
+
+    # Override num_tables if generate_preview is True
+    if generate_preview is None:
+        generate_preview = config.get("generate_preview", True)
+    if generate_preview:
+        num_tables = 1  # For preview, generate just 1 table for 1 page
+        print("PREVIEW MODE: Generating 1 page preview")
+    
+    # Use tables_per_page from config if -p not explicitly provided
+    if tables_per_page is None:
+        page_layout = config.get("page_layout", {})
+        tables_per_page = page_layout.get("tickets_per_page", 8)
+
+    # Get winning_cells from config
+    winning_cells = config.get("winning_cells", 5 if num_cols == 9 else 4)
+    
+    # Get split_by_rounds from config or parameter
+    if split_by_rounds is None:
+        split_by_rounds = config.get("split_by_rounds", True)
+    
+    # Get export_format from config or parameter
+    if export_format is None:
+        export_format = config.get("export_format", "docx")
+    if export_format not in ['docx', 'pdf']:
+        export_format = "docx"
+    print(f"Export format: {export_format.upper()}")
 
     start = time.perf_counter()
     total = num_tables
@@ -840,7 +977,7 @@ def main(num_tables, tables_per_page=8, config_path=None):
                 batches.append(b)
                 remaining -= b
 
-        futures = {executor.submit(worker_batch, b, num_cols): b for b in batches}
+        futures = {executor.submit(worker_batch, b, num_cols, winning_cells): b for b in batches}
 
         for future in as_completed(futures):
             tables = future.result()
@@ -852,7 +989,7 @@ def main(num_tables, tables_per_page=8, config_path=None):
 
     # If cross-worker duplicates reduced our count, generate more
     while len(all_tables) < total:
-        t = generate_table()
+        t = generate_table(winning_cells=winning_cells)
         fp = table_fingerprint(t)
         if fp not in global_seen:
             global_seen.add(fp)
@@ -865,11 +1002,11 @@ def main(num_tables, tables_per_page=8, config_path=None):
     # --- Validate all ---
     invalid = 0
     for i, table in enumerate(all_tables):
-        if not validate_table(table):
+        if not validate_table(table, winning_cells=winning_cells):
             invalid += 1
             print(f"  [FAIL] Table {i+1}")
     if invalid == 0:
-        print(f"Validation: ALL {len(all_tables)} tables PASSED ✓")
+        print(f"Validation: ALL {len(all_tables)} tables PASSED [OK]")
     else:
         print(f"Validation: {invalid} tables FAILED")
 
@@ -879,7 +1016,7 @@ def main(num_tables, tables_per_page=8, config_path=None):
         for i, table in enumerate(all_tables):
             print_combined_visual(table, i + 1, file=f)
             f.write("\n")
-    print(f"Visual output → {visual_path}")
+    print(f"Visual output >> {visual_path}")
 
     # --- Save JSON output ---
     json_path = os.path.join(os.path.dirname(__file__), "loto_tables.json")
@@ -891,28 +1028,58 @@ def main(num_tables, tables_per_page=8, config_path=None):
         })
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(json_data, f, indent=2)
-    print(f"JSON output  → {json_path}")
+    print(f"JSON output  >> {json_path}")
 
     # --- Save DOCX output ---
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     docx_path = os.path.join(os.path.dirname(__file__), f"loto_tables_{timestamp}.docx")
     save_docx(all_tables, docx_path, config=config, tables_per_page=tables_per_page)
-    print(f"DOCX output  → {docx_path}")
+    print(f"DOCX output  >> {docx_path}")
+    
+    # --- Convert to PDF if requested ---
+    if export_format == "pdf":
+        pdf_path = convert_docx_to_pdf(docx_path)
+        if pdf_path:
+            print(f"PDF output   >> {pdf_path}")
+        else:
+            print("Warning: PDF conversion failed, DOCX file is available")
 
     # --- Print first 3 tables as preview ---
     print(f"\n--- Preview (first 3 of {total}) ---")
     for i in range(min(3, len(all_tables))):
         print_combined_visual(all_tables[i], i + 1)
         print()
+    
+    # --- Split by rounds if configured ---
+    if split_by_rounds and not generate_preview:
+        print("\nSplitting tickets by rounds...")
+        import subprocess
+        split_script = os.path.join(os.path.dirname(__file__), "split_by_rounds.py")
+        result = subprocess.run([sys.executable, split_script], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("Round files generated successfully")
+            print(result.stdout)
+        else:
+            print("Error running split_by_rounds.py:")
+            print(result.stderr)
+    elif not split_by_rounds and not generate_preview:
+        print("\nNote: split_by_rounds is disabled. Generated main DOCX file only.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Vietnamese Lô Tô table generator")
     parser.add_argument("-n", "--tables", type=int, default=None,
                         help="Number of unique tables to generate (default: from config or 500)")
-    parser.add_argument("-p", "--per-page", type=int, default=8,
-                        help="Tables per page in DOCX output (default: 8)")
+    parser.add_argument("-p", "--per-page", type=int, default=None,
+                        help="Tables per page in DOCX output (default: from config or 8)")
     parser.add_argument("-c", "--config", type=str, default=None,
                         help="Path to config JSON file (default: config.json)")
+    parser.add_argument("--split-rounds", type=lambda x: x.lower() in ('true', '1', 'yes'), default=None,
+                        help="Split output by rounds (true/false, default: from config)")
+    parser.add_argument("--preview-only", type=lambda x: x.lower() in ('true', '1', 'yes'), default=None,
+                        help="Generate preview file only (1 page), set to false for full file (true/false, default: from config)")
+    parser.add_argument("--format", type=str, choices=['docx', 'pdf'], default=None,
+                        help="Export file format: docx or pdf (default: from config or docx)")
     args = parser.parse_args()
-    main(args.tables, tables_per_page=args.per_page, config_path=args.config)
+    main(args.tables, tables_per_page=args.per_page, config_path=args.config, 
+         split_by_rounds=args.split_rounds, generate_preview=args.preview_only, export_format=args.format)

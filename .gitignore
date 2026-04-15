@@ -50,7 +50,12 @@ coverage.xml
 .hypothesis/
 
 # Generated output files (keep config only)
-loto_tables_*.docx
+# Exclude timestamped test files
+loto_tables_202*.docx
+# But keep the latest production file and rounds
+!loto_tables_latest.docx
+!loto_7cols_round_*.docx
+# Exclude generated data
 loto_tables.json
 loto_tables.txt
 .pytest_cache/
